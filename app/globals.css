@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+@theme {
+  /* TerroirSync palette — premium wine x agtech */
+  --color-cream: #faf6ee;
+  --color-parchment: #f3ecdd;
+  --color-burgundy-50: #fbf2f4;
+  --color-burgundy-100: #f4dfe4;
+  --color-burgundy-500: #8e2f43;
+  --color-burgundy-600: #722535;
+  --color-burgundy-700: #5c1a28;
+  --color-burgundy-800: #471320;
+  --color-vine-100: #e3ecdf;
+  --color-vine-500: #3f6b4a;
+  --color-vine-600: #2e5339;
+  --color-vine-700: #234229;
+  --color-earth-300: #c9b48e;
+  --color-earth-500: #8b6f47;
+  --color-earth-700: #5f4a2e;
+  --color-ink: #2b241c;
+}
+
+@theme inline {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-display: var(--font-playfair), Georgia, "Times New Roman", serif;
+}
+
+body {
+  background-color: var(--color-cream);
+  color: var(--color-ink);
+}
+
+/* Range slider styling for sunlight-readable iPad use */
+input[type="range"].terroir-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 8px;
+  border-radius: 9999px;
+  background: linear-gradient(
+    to right,
+    var(--color-burgundy-600) 0%,
+    var(--color-burgundy-600) var(--fill, 50%),
+    var(--color-parchment) var(--fill, 50%),
+    var(--color-parchment) 100%
+  );
+  outline: none;
+}
+input[type="range"].terroir-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 9999px;
+  background: var(--color-burgundy-700);
+  border: 3px solid #ffffff;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.35);
+  cursor: pointer;
+}
+input[type="range"].terroir-slider::-moz-range-thumb {
+  width: 26px;
+  height: 26px;
+  border-radius: 9999px;
+  background: var(--color-burgundy-700);
+  border: 3px solid #ffffff;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.35);
+  cursor: pointer;
+}
