@@ -20,7 +20,18 @@ import {
   Sprout,
   Tractor,
   TriangleAlert,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
+import { EvidenceLog } from "@/components/evidence-log";
+import {
+  getFieldServerSnapshot,
+  getFieldSnapshot,
+  subscribeField,
+  updateField,
+  type CoverCrop,
+  type UnderVineManagement,
+} from "@/lib/field-store";
 import {
   Area,
   AreaChart,
@@ -39,9 +50,6 @@ const CARBON_PER_ACRE_TCO2E = 1.63; // tCO2e/acre/yr — perennial crop (mock)
 const HSP_RATE_PER_ACRE_USD = 153; // USD/acre — CDFA HSP cover-crop rate (mock)
 const DIESEL_TCO2E_PER_GALLON = 0.0102; // tCO2e/gal of off-road diesel (mock)
 const DIESEL_SLIDER_MAX = 400; // gallons/block/month
-
-type CoverCrop = "perennial-mix" | "legume-mix" | "none";
-type UnderVineManagement = "shallow-tillage" | "herbicide" | "sheep-grazing";
 
 const COVER_CROP_OPTIONS: { value: CoverCrop; label: string; note: string }[] = [
   {
@@ -152,6 +160,23 @@ function useIsHydrated() {
   );
 }
 
+function subscribeOnline(callback: () => void) {
+  window.addEventListener("online", callback);
+  window.addEventListener("offline", callback);
+  return () => {
+    window.removeEventListener("online", callback);
+    window.removeEventListener("offline", callback);
+  };
+}
+
+function useIsOnline() {
+  return useSyncExternalStore(
+    subscribeOnline,
+    () => navigator.onLine,
+    () => true,
+  );
+}
+
 function PaneHeader({
   icon: Icon,
   title,
@@ -208,15 +233,16 @@ function Metric({
 /* ------------------------------------------------------------------ */
 
 export default function TerroirDashboard() {
-  const [vineyardName, setVineyardName] = useState("Oak Knoll Estate Vineyard");
-  const [blockId, setBlockId] = useState("Block 4 — Cabernet Sauvignon");
-  const [acresInput, setAcresInput] = useState("12.5");
-  const [coverCrop, setCoverCrop] = useState<CoverCrop>("perennial-mix");
-  const [underVine, setUnderVine] =
-    useState<UnderVineManagement>("shallow-tillage");
-  const [diesel, setDiesel] = useState(85);
+  const field = useSyncExternalStore(
+    subscribeField,
+    getFieldSnapshot,
+    getFieldServerSnapshot,
+  );
+  const { vineyardName, blockId, acresInput, coverCrop, underVine, diesel, evidence } =
+    field;
   const [copied, setCopied] = useState(false);
   const mounted = useIsHydrated();
+  const online = useIsOnline();
 
   /* ---- derived metrics (recomputed on every keystroke) ---- */
 
@@ -258,7 +284,30 @@ export default function TerroirDashboard() {
     { label: "Alleyway cover crop documented", ok: true },
     { label: "Under-vine practice Napa Green compliant", ok: underVine !== "herbicide" },
     { label: "Monthly fuel usage logged", ok: true },
+    {
+      label: "Geotagged field evidence on file",
+      ok: evidence.some((e) => e.lat !== null),
+    },
   ];
+
+  const evidenceSummary = useMemo(
+    () =>
+      evidence.map((e) => ({
+        id: e.id,
+        caption: e.caption.trim() || null,
+        capturedAt: e.photoTakenAt ?? e.loggedAt,
+        location:
+          e.lat !== null && e.lon !== null
+            ? {
+                lat: Number(e.lat.toFixed(6)),
+                lon: Number(e.lon.toFixed(6)),
+                source: e.gpsSource,
+                accuracyM: e.accuracyM,
+              }
+            : null,
+      })),
+    [evidence],
+  );
 
   const chartData = useMemo(() => {
     const monthlyAvg = annualCarbon / 12;
@@ -303,10 +352,16 @@ export default function TerroirDashboard() {
         nrcsPracticeCode: "CPS 340 — Cover Crop",
         estimatedEligibilityUsd: Number(grantEligibility.toFixed(0)),
       },
+      evidence: {
+        photoCount: evidenceSummary.length,
+        geotaggedCount: evidenceSummary.filter((e) => e.location).length,
+        items: evidenceSummary,
+      },
     };
     return JSON.stringify(payload, null, 2);
   }, [
     mounted,
+    evidenceSummary,
     vineyardName,
     blockId,
     acres,
@@ -382,6 +437,17 @@ export default function TerroirDashboard() {
               MVP Prototype
             </span>
           </div>
+          <span
+            role="status"
+            className={`flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold ring-1 ${
+              online
+                ? "bg-vine-100 text-vine-700 ring-vine-500/40"
+                : "bg-amber-100 text-amber-800 ring-amber-400/60"
+            }`}
+          >
+            {online ? <Wifi className="size-4" /> : <WifiOff className="size-4" />}
+            {online ? "Online · saved on device" : "Offline · saved on device"}
+          </span>
         </div>
       </header>
 
@@ -389,7 +455,7 @@ export default function TerroirDashboard() {
       <main className="relative z-10 mx-auto max-w-[1440px] px-4 py-8 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
           {/* ===== Pane 1 — input ===== */}
-          <section className="lg:col-span-4">
+          <section className="space-y-6 lg:col-span-4">
             <div className={cardClass}>
               <PaneHeader
                 icon={Sprout}
@@ -408,7 +474,7 @@ export default function TerroirDashboard() {
                     type="text"
                     className={inputClass}
                     value={vineyardName}
-                    onChange={(e) => setVineyardName(e.target.value)}
+                    onChange={(e) => updateField({ vineyardName: e.target.value })}
                     placeholder="e.g. Oak Knoll Estate Vineyard"
                   />
                 </div>
@@ -422,7 +488,7 @@ export default function TerroirDashboard() {
                     type="text"
                     className={inputClass}
                     value={blockId}
-                    onChange={(e) => setBlockId(e.target.value)}
+                    onChange={(e) => updateField({ blockId: e.target.value })}
                     placeholder="e.g. Block 4 — Cabernet Sauvignon"
                   />
                 </div>
@@ -438,7 +504,7 @@ export default function TerroirDashboard() {
                     step={0.5}
                     className={inputClass}
                     value={acresInput}
-                    onChange={(e) => setAcresInput(e.target.value)}
+                    onChange={(e) => updateField({ acresInput: e.target.value })}
                     placeholder="0.0"
                   />
                 </div>
@@ -453,7 +519,7 @@ export default function TerroirDashboard() {
                       className={`${inputClass} appearance-none pr-12`}
                       value={coverCrop}
                       onChange={(e) =>
-                        setCoverCrop(e.target.value as CoverCrop)
+                        updateField({ coverCrop: e.target.value as CoverCrop })
                       }
                     >
                       {COVER_CROP_OPTIONS.map((opt) => (
@@ -479,7 +545,9 @@ export default function TerroirDashboard() {
                       className={`${inputClass} appearance-none pr-12`}
                       value={underVine}
                       onChange={(e) =>
-                        setUnderVine(e.target.value as UnderVineManagement)
+                        updateField({
+                          underVine: e.target.value as UnderVineManagement,
+                        })
                       }
                     >
                       {UNDER_VINE_OPTIONS.map((opt) => (
@@ -512,7 +580,7 @@ export default function TerroirDashboard() {
                       max={DIESEL_SLIDER_MAX}
                       step={5}
                       value={diesel}
-                      onChange={(e) => setDiesel(Number(e.target.value))}
+                      onChange={(e) => updateField({ diesel: Number(e.target.value) })}
                       className="terroir-slider flex-1"
                       style={{ "--fill": sliderFill } as CSSProperties}
                     />
@@ -527,7 +595,9 @@ export default function TerroirDashboard() {
                       onChange={(e) => {
                         const n = Number(e.target.value);
                         if (Number.isNaN(n)) return;
-                        setDiesel(Math.max(0, Math.min(n, DIESEL_SLIDER_MAX)));
+                        updateField({
+                          diesel: Math.max(0, Math.min(n, DIESEL_SLIDER_MAX)),
+                        });
                       }}
                     />
                   </div>
@@ -539,6 +609,12 @@ export default function TerroirDashboard() {
                 </div>
               </div>
             </div>
+
+            <EvidenceLog
+              evidence={evidence}
+              cardClass={cardClass}
+              labelClass={labelClass}
+            />
           </section>
 
           {/* ===== Pane 2 — live sustainability dashboard ===== */}
@@ -572,7 +648,7 @@ export default function TerroirDashboard() {
                   accent="text-burgundy-600"
                   footnote={
                     coverCrop === "none"
-                      ? "Plant an alleyway cover crop to unlock the HPS incentive."
+                      ? "Plant an alleyway cover crop to unlock the HSP incentive."
                       : `${acres.toLocaleString("en-US")} acres × $${HSP_RATE_PER_ACRE_USD}/acre — HSP cover-crop rate (mock)`
                   }
                 >
